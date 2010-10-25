@@ -13,14 +13,25 @@ namespace {
 
 using namespace v8;
 
+// watches the accept() socket
+ev_io incoming_connection_watcher;
+
+void incoming_connection_callback(struct ev_loop *loop, ev_io *watcher, int revents) {
+	// TODO accept() connection
+}
+
 bool is_socket(int fd) {
 	struct stat s;
 	return fstat(fd, &s) != -1 && S_ISSOCK(s.st_mode);
 }
 
-Handle<Value> IsFastCGI(const Arguments& args) {
+bool is_fastcgi() {
 	// FIXME tighter check
-	return is_socket(STDIN_FILENO) ? True() : False();
+	return is_socket(STDIN_FILENO);
+}
+
+Handle<Value> IsFastCGI(const Arguments& args) {
+	return is_fastcgi() ? True() : False();
 }
 
 Handle<Value> Write(const Arguments& args) {
@@ -70,6 +81,20 @@ Handle<Value> Responder(const Arguments& args) {
 void RegisterModule(Handle<Object> target) {
 	target->Set(String::NewSymbol("isFastCGI"), FunctionTemplate::New(IsFastCGI)->GetFunction());
 	target->Set(String::NewSymbol("responder"), FunctionTemplate::New(Responder)->GetFunction());
+
+	if (true || is_fastcgi()) {
+		// fd 0 is a socket; strange things happen when a nodejs application tries to read from it so move it
+		const int fd = dup2(0, open("/", O_RDONLY));
+
+		// put socket in non-blocking mode
+		const int flags = fcntl(fd, F_GETFL);
+		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+		// add it to the watch list
+		ev_init(&incoming_connection_watcher, incoming_connection_callback);
+		ev_io_set(&incoming_connection_watcher, fd, EV_READ | EV_WRITE);	// accept() socket so EV_WRITE is probably enough (but add EV_ERROR?)
+		ev_io_start(EV_DEFAULT_UC, &incoming_connection_watcher);
+	}
 }
 
 } // anonymous namespace
