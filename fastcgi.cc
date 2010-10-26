@@ -1,4 +1,5 @@
 #include <fcgi_stdio.h>
+
 #include <node.h>
 #include <v8.h>
 
@@ -17,7 +18,9 @@ using namespace v8;
 ev_io incoming_connection_watcher;
 
 void incoming_connection_callback(struct ev_loop *loop, ev_io *watcher, int revents) {
-	// TODO accept() connection
+	puts("Received event.");
+	ev_io_stop(loop, watcher);
+	ev_unref(loop);
 }
 
 bool is_socket(int fd) {
@@ -79,6 +82,8 @@ Handle<Value> Responder(const Arguments& args) {
 }
 
 void RegisterModule(Handle<Object> target) {
+	HandleScope scope;
+
 	target->Set(String::NewSymbol("isFastCGI"), FunctionTemplate::New(IsFastCGI)->GetFunction());
 	target->Set(String::NewSymbol("responder"), FunctionTemplate::New(Responder)->GetFunction());
 
@@ -91,9 +96,10 @@ void RegisterModule(Handle<Object> target) {
 		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
 		// add it to the watch list
-		ev_init(&incoming_connection_watcher, incoming_connection_callback);
-		ev_io_set(&incoming_connection_watcher, fd, EV_READ | EV_WRITE);	// accept() socket so EV_WRITE is probably enough (but add EV_ERROR?)
-		ev_io_start(EV_DEFAULT_UC, &incoming_connection_watcher);
+		struct ev_loop *loop = ev_default_loop(EVFLAG_AUTO);
+		ev_io_init(&incoming_connection_watcher, incoming_connection_callback, fd, EV_READ | EV_WRITE | EV_ERROR);
+		ev_io_start(loop, &incoming_connection_watcher);
+		ev_ref(loop);
 	}
 }
 
