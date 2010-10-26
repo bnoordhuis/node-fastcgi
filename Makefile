@@ -3,4 +3,4 @@ ifndef NODE_PATH
 endif
 
 all:
-	g++ -Wall -ansi -g -I$(NODE_PATH)/include/node/ -lfcgi -lev -fPIC -shared -o fastcgi.node fastcgi.cc
+	g++ -Wall -ansi -g -I$(NODE_PATH)/include/node/ -lfcgi -fPIC -shared -o fastcgi.node fastcgi.cc
