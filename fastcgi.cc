@@ -3,8 +3,9 @@
 #include <node.h>
 #include <v8.h>
 
-#include <sys/socket.h>
+#include <netinet/in.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -14,62 +15,21 @@ namespace {
 
 using namespace v8;
 
-bool is_socket(int fd) {
-	struct stat s;
-	return fstat(fd, &s) != -1 && S_ISSOCK(s.st_mode);
-}
-
-bool is_fastcgi() {
-	// FIXME tighter check
-	return is_socket(STDIN_FILENO);
-}
-
-Handle<Value> IsFastCGI(const Arguments& args) {
-	return is_fastcgi() ? True() : False();
-}
-
-Handle<Value> Write(const Arguments& args) {
-	assert(args[0]->IsString());
-	String::Utf8Value s(args[0]->ToString());
-	fputs(*s, stdout);
-	fflush(stdout);
-	return Undefined();
-}
-
-Handle<Value> Responder(const Arguments& args) {
+Handle<Value> Accept(const Arguments& args) {
 	HandleScope scope;
 
-	if (!args[0]->IsFunction()) {
-		Local<Value> ex = Exception::Error(String::New("Argument must be a callback."));
-		return ThrowException(ex);
+	assert(args[0]->IsInt32());
+
+	const int listenfd = args[0]->Int32Value();
+	sockaddr_in sin;
+	socklen_t len;
+	len = sizeof(sin);
+
+	const int clientfd = accept(listenfd, (sockaddr *) &sin, &len);
+	if (clientfd == -1) {
+		return ThrowException(node::ErrnoException(errno, "accept", "", 0));
 	}
-
-	Function* callback = Function::Cast(*args[0]);
-	while (FCGI_Accept() == 0) {
-		TryCatch tc;
-
-		Local<Object> req = Object::New();
-		Local<Object> res = Object::New();
-
-		// FIXME optimize
-		Local<Array> requestHeaders = Array::New(0);
-		for (int i = 0; environ[i]; ++i) {
-			requestHeaders->Set(i, String::New(environ[i]));
-		}
-
-		req->Set(String::NewSymbol("headers"), requestHeaders);
-		res->Set(String::NewSymbol("write"), FunctionTemplate::New(Write)->GetFunction());
-
-		Handle<Value> argv[2] = { req, res };
-		Local<Value> rv = callback->Call(Context::GetCurrent()->Global(), 2, argv);
-
-		if (tc.HasCaught()) {
-			// tc.ReThrow()? or not throw at all?
-			return tc.Exception();
-		}
-	}
-
-	return Undefined();
+	return scope.Close(Integer::New(clientfd));
 }
 
 Handle<Value> Dup2(const Arguments& args) {
@@ -90,10 +50,8 @@ Handle<Value> Dup2(const Arguments& args) {
 void RegisterModule(Handle<Object> target) {
 	HandleScope scope;
 
+	target->Set(String::NewSymbol("accept"), FunctionTemplate::New(Accept)->GetFunction());
 	target->Set(String::NewSymbol("dup2"), FunctionTemplate::New(Dup2)->GetFunction());
-
-	target->Set(String::NewSymbol("isFastCGI"), FunctionTemplate::New(IsFastCGI)->GetFunction());
-	target->Set(String::NewSymbol("responder"), FunctionTemplate::New(Responder)->GetFunction());
 }
 
 } // anonymous namespace
