@@ -72,8 +72,25 @@ Handle<Value> Responder(const Arguments& args) {
 	return Undefined();
 }
 
+Handle<Value> Dup2(const Arguments& args) {
+	HandleScope scope;
+
+	assert(args[0]->IsInt32());
+	assert(args[1]->IsInt32());
+
+	const int oldfd = args[0]->Int32Value();
+	const int newfd = args[1]->Int32Value();
+
+	if (dup2(oldfd, newfd) == -1) {
+		return ThrowException(node::ErrnoException(errno, "dup2", "", 0));
+	}
+	return scope.Close(Integer::New(newfd));
+}
+
 void RegisterModule(Handle<Object> target) {
 	HandleScope scope;
+
+	target->Set(String::NewSymbol("dup2"), FunctionTemplate::New(Dup2)->GetFunction());
 
 	target->Set(String::NewSymbol("isFastCGI"), FunctionTemplate::New(IsFastCGI)->GetFunction());
 	target->Set(String::NewSymbol("responder"), FunctionTemplate::New(Responder)->GetFunction());
