@@ -14,15 +14,6 @@ namespace {
 
 using namespace v8;
 
-// watches the accept() socket
-ev_io incoming_connection_watcher;
-
-void incoming_connection_callback(struct ev_loop *loop, ev_io *watcher, int revents) {
-	puts("Received event.");
-	ev_io_stop(loop, watcher);
-	ev_unref(loop);
-}
-
 bool is_socket(int fd) {
 	struct stat s;
 	return fstat(fd, &s) != -1 && S_ISSOCK(s.st_mode);
@@ -86,21 +77,6 @@ void RegisterModule(Handle<Object> target) {
 
 	target->Set(String::NewSymbol("isFastCGI"), FunctionTemplate::New(IsFastCGI)->GetFunction());
 	target->Set(String::NewSymbol("responder"), FunctionTemplate::New(Responder)->GetFunction());
-
-	if (true || is_fastcgi()) {
-		// fd 0 is a socket; strange things happen when a nodejs application tries to read from it so move it
-		const int fd = dup2(0, open("/", O_RDONLY));
-
-		// put socket in non-blocking mode
-		const int flags = fcntl(fd, F_GETFL);
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-		// add it to the watch list
-		struct ev_loop *loop = ev_default_loop(EVFLAG_AUTO);
-		ev_io_init(&incoming_connection_watcher, incoming_connection_callback, fd, EV_READ | EV_WRITE | EV_ERROR);
-		ev_io_start(loop, &incoming_connection_watcher);
-		ev_ref(loop);
-	}
 }
 
 } // anonymous namespace
